@@ -14,7 +14,9 @@
       "mcp__context7__get-library-docs",
       "Bash(cat:*)",
       "WebSearch",
-      "WebFetch(domain:developers.binance.com)"
+      "WebFetch(domain:developers.binance.com)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfix: 修复 Vercel 构建配置，支持 API Routes\n\n- 移除 vercel.json 中的 outputDirectory: \"out\" 配置\n- 删除旧的静态导出目录 out\n- 现在使用 Vercel Serverless Functions 运行 API Routes\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n)\")"
     ]
   }
 }
