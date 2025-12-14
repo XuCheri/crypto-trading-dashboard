@@ -1,0 +1,184 @@
+'use client'
+
+import { useState, useCallback, useMemo } from 'react'
+import {
+  useFuturesDepthStream,
+  useCoinMDepthStream,
+  DepthStreamData,
+} from '@/hooks/useBinanceStream'
+import { formatPrice, formatNumber, cn } from '@/lib/utils'
+import { useLanguage } from '@/lib/store/ui'
+
+interface FuturesOrderbookProps {
+  symbol: string
+  marketType: 'usdt-m' | 'coin-m'
+  rows?: number
+  className?: string
+}
+
+interface OrderbookLevel {
+  price: number
+  quantity: number
+  total: number
+  percent: number
+}
+
+/**
+ * 合约订单簿组件
+ * 显示买卖盘深度数据
+ */
+export function FuturesOrderbook({
+  symbol,
+  marketType,
+  rows = 15,
+  className,
+}: FuturesOrderbookProps) {
+  const language = useLanguage()
+
+  // 订单簿数据
+  const [bids, setBids] = useState<[string, string][]>([])
+  const [asks, setAsks] = useState<[string, string][]>([])
+
+  // 处理深度数据更新
+  const handleDepthUpdate = useCallback((data: DepthStreamData) => {
+    setBids(data.b.slice(0, 20))
+    setAsks(data.a.slice(0, 20))
+  }, [])
+
+  // 根据市场类型使用不同的 hook
+  const useDepthStream = marketType === 'usdt-m' ? useFuturesDepthStream : useCoinMDepthStream
+  const { isConnected } = useDepthStream(symbol, handleDepthUpdate, {
+    enabled: !!symbol,
+  })
+
+  // 处理买单数据
+  const processedBids = useMemo((): OrderbookLevel[] => {
+    let cumulative = 0
+    const levels = bids.slice(0, rows).map(([price, qty]) => {
+      const p = parseFloat(price)
+      const q = parseFloat(qty)
+      cumulative += q
+      return { price: p, quantity: q, total: cumulative, percent: 0 }
+    })
+
+    const maxTotal = levels.length > 0 ? levels[levels.length - 1].total : 1
+    return levels.map((l) => ({ ...l, percent: (l.total / maxTotal) * 100 }))
+  }, [bids, rows])
+
+  // 处理卖单数据
+  const processedAsks = useMemo((): OrderbookLevel[] => {
+    let cumulative = 0
+    const levels = asks.slice(0, rows).map(([price, qty]) => {
+      const p = parseFloat(price)
+      const q = parseFloat(qty)
+      cumulative += q
+      return { price: p, quantity: q, total: cumulative, percent: 0 }
+    })
+
+    const maxTotal = levels.length > 0 ? levels[levels.length - 1].total : 1
+    return levels.map((l) => ({ ...l, percent: (l.total / maxTotal) * 100 }))
+  }, [asks, rows])
+
+  // 中间价
+  const midPrice = useMemo(() => {
+    if (processedBids.length === 0 || processedAsks.length === 0) return null
+    return (processedBids[0].price + processedAsks[0].price) / 2
+  }, [processedBids, processedAsks])
+
+  // 价差
+  const spread = useMemo(() => {
+    if (processedBids.length === 0 || processedAsks.length === 0) return null
+    const spreadValue = processedAsks[0].price - processedBids[0].price
+    const spreadPercent = (spreadValue / processedAsks[0].price) * 100
+    return { value: spreadValue, percent: spreadPercent }
+  }, [processedBids, processedAsks])
+
+  return (
+    <div className={cn('flex flex-col', className)}>
+      {/* 标题 */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+        <h3 className="font-semibold text-sm">
+          {language === 'zh' ? '订单簿' : 'Order Book'}
+        </h3>
+        <div
+          className={cn(
+            'w-2 h-2 rounded-full',
+            isConnected ? 'bg-up animate-pulse' : 'bg-muted'
+          )}
+          title={isConnected ? 'Connected' : 'Disconnected'}
+        />
+      </div>
+
+      {/* 表头 */}
+      <div className="grid grid-cols-3 px-3 py-1 text-xs text-muted-foreground border-b border-border">
+        <div>{language === 'zh' ? '价格' : 'Price'}</div>
+        <div className="text-right">{language === 'zh' ? '数量' : 'Amount'}</div>
+        <div className="text-right">{language === 'zh' ? '累计' : 'Total'}</div>
+      </div>
+
+      {/* 卖单 */}
+      <div className="flex-1 overflow-hidden">
+        <div className="flex flex-col-reverse">
+          {processedAsks.slice(0, rows).map((level, i) => (
+            <div
+              key={`ask-${i}`}
+              className="relative grid grid-cols-3 px-3 py-0.5 text-xs hover:bg-accent/50"
+            >
+              <div
+                className="absolute inset-y-0 right-0 bg-down/10"
+                style={{ width: `${level.percent}%` }}
+              />
+              <div className="relative text-down tabular-nums">
+                {formatPrice(level.price)}
+              </div>
+              <div className="relative text-right tabular-nums">
+                {formatNumber(level.quantity, 4)}
+              </div>
+              <div className="relative text-right tabular-nums text-muted-foreground">
+                {formatNumber(level.total, 4)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 中间价和价差 */}
+      <div className="px-3 py-2 border-y border-border bg-muted/30">
+        <div className="flex items-center justify-between">
+          <span className="text-lg font-semibold tabular-nums">
+            {midPrice ? formatPrice(midPrice) : '-'}
+          </span>
+          {spread && (
+            <span className="text-xs text-muted-foreground">
+              {language === 'zh' ? '价差' : 'Spread'}: {spread.percent.toFixed(3)}%
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* 买单 */}
+      <div className="flex-1 overflow-hidden">
+        {processedBids.slice(0, rows).map((level, i) => (
+          <div
+            key={`bid-${i}`}
+            className="relative grid grid-cols-3 px-3 py-0.5 text-xs hover:bg-accent/50"
+          >
+            <div
+              className="absolute inset-y-0 right-0 bg-up/10"
+              style={{ width: `${level.percent}%` }}
+            />
+            <div className="relative text-up tabular-nums">
+              {formatPrice(level.price)}
+            </div>
+            <div className="relative text-right tabular-nums">
+              {formatNumber(level.quantity, 4)}
+            </div>
+            <div className="relative text-right tabular-nums text-muted-foreground">
+              {formatNumber(level.total, 4)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}

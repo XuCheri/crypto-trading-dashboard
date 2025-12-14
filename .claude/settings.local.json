@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__filesystem__list_directory",
+      "WebFetch(domain:binance-docs.github.io)",
+      "mcp__fetch__fetch",
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --use-npm --yes)",
+      "Bash(npm init -y)",
+      "Bash(npm install:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(npm run build:*)",
+      "mcp__filesystem__directory_tree",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs",
+      "Bash(cat:*)",
+      "WebSearch",
+      "WebFetch(domain:developers.binance.com)"
+    ]
+  }
+}
