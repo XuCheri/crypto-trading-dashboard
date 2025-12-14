@@ -252,15 +252,29 @@ export interface MarkPriceStreamData {
 // ============ 合约专用 Hooks ============
 
 /**
- * 订阅合约标记价格
+ * 订阅单个合约标记价格
  */
-export function useMarkPriceStream(
+export function useSingleMarkPriceStream(
   symbol: string,
   onMessage: (data: MarkPriceStreamData) => void,
   options: Omit<UseBinanceStreamOptions, 'market'> & { market?: 'futures-usdt' | 'futures-coin' } = {}
 ) {
   const { market = 'futures-usdt', ...rest } = options
   const streams = symbol ? [streamNames.markPrice(symbol)] : []
+  return useBinanceStream(streams, onMessage as MessageHandler, { ...rest, market })
+}
+
+/**
+ * 订阅全市场标记价格（包含资金费率）
+ * 使用 !markPrice@arr 流获取所有合约的标记价格
+ */
+export function useMarkPriceStream(
+  onMessage: (data: MarkPriceStreamData | MarkPriceStreamData[]) => void,
+  options: Omit<UseBinanceStreamOptions, 'market'> & { market?: 'futures-usdt' | 'futures-coin' } = {}
+) {
+  const { market = 'futures-usdt', ...rest } = options
+  // 使用全市场标记价格流
+  const streams = ['!markPrice@arr@1s']
   return useBinanceStream(streams, onMessage as MessageHandler, { ...rest, market })
 }
 

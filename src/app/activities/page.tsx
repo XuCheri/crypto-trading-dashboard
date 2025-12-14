@@ -1,13 +1,15 @@
 'use client'
 
 import { useLanguage } from '@/lib/store/ui'
-import { AnnouncementPanel } from '@/components/activities/AnnouncementPanel'
-import { LaunchpadPanel } from '@/components/activities/LaunchpadPanel'
-import { Calendar, Sparkles, ExternalLink } from 'lucide-react'
+import { Calendar, Sparkles, ExternalLink, AlertTriangle, Globe } from 'lucide-react'
 
 /**
  * 活动聚合页面
- * 展示 Binance 公告、Launchpad、Launchpool 等活动信息
+ *
+ * 限制说明：
+ * - Binance 没有公开的公告 API
+ * - REST API 被 CORS 阻止，无法获取活动数据
+ * - 本页面提供外部链接作为替代方案
  */
 export default function ActivitiesPage() {
   const language = useLanguage()
@@ -34,7 +36,7 @@ export default function ActivitiesPage() {
             href="https://www.binance.com/en/support/announcement"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 px-3 py-2 text-sm bg-accent rounded-lg hover:bg-accent/80 transition-colors"
+            className="flex items-center gap-2 px-3 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
           >
             <ExternalLink className="h-4 w-4" />
             {language === 'zh' ? 'Binance 公告中心' : 'Announcement Center'}
@@ -42,17 +44,109 @@ export default function ActivitiesPage() {
         </div>
       </div>
 
+      {/* 数据限制提示 */}
+      <div className="mx-4 mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
+          <div>
+            <div className="font-medium text-yellow-500 mb-1">
+              {language === 'zh' ? '纯前端模式数据限制' : 'Frontend-Only Mode Limitations'}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {language === 'zh'
+                ? 'Binance 没有公开的公告 API，且 REST API 被 CORS 阻止。本页面提供外部链接，请直接访问 Binance 官网获取最新活动信息。'
+                : 'Binance does not provide a public announcement API, and REST API is blocked by CORS. This page provides external links. Please visit Binance website directly for latest activity information.'}
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* 主内容区 */}
       <div className="flex-1 overflow-y-auto p-4">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* 公告面板 */}
-          <div className="lg:row-span-2">
-            <AnnouncementPanel className="h-full min-h-[500px]" />
+          {/* 公告类别 */}
+          <div className="bg-card border border-border rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <Globe className="h-5 w-5 text-primary" />
+              <h3 className="font-semibold">
+                {language === 'zh' ? 'Binance 公告' : 'Binance Announcements'}
+              </h3>
+            </div>
+            <div className="space-y-2">
+              <ExternalLinkCard
+                href="https://www.binance.com/en/support/announcement/new-cryptocurrency-listing"
+                title={language === 'zh' ? '新上币公告' : 'New Listings'}
+                description={
+                  language === 'zh'
+                    ? '最新上线的加密货币'
+                    : 'Latest cryptocurrency listings'
+                }
+              />
+              <ExternalLinkCard
+                href="https://www.binance.com/en/support/announcement/delisting"
+                title={language === 'zh' ? '下架公告' : 'Delisting'}
+                description={
+                  language === 'zh'
+                    ? '即将下架的交易对'
+                    : 'Trading pairs to be delisted'
+                }
+              />
+              <ExternalLinkCard
+                href="https://www.binance.com/en/support/announcement/api-updates"
+                title="API Updates"
+                description={
+                  language === 'zh'
+                    ? 'API 更新和变更通知'
+                    : 'API updates and change notifications'
+                }
+              />
+              <ExternalLinkCard
+                href="https://www.binance.com/en/support/announcement/futures"
+                title={language === 'zh' ? '合约公告' : 'Futures Announcements'}
+                description={
+                  language === 'zh'
+                    ? '合约相关公告和更新'
+                    : 'Futures related announcements'
+                }
+              />
+            </div>
           </div>
 
-          {/* Launchpad/Launchpool 面板 */}
-          <div>
-            <LaunchpadPanel className="h-full min-h-[400px]" />
+          {/* Launchpad/Launchpool */}
+          <div className="bg-card border border-border rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <Sparkles className="h-5 w-5 text-primary" />
+              <h3 className="font-semibold">Launchpad & Launchpool</h3>
+            </div>
+            <div className="space-y-2">
+              <ExternalLinkCard
+                href="https://launchpad.binance.com/en/launchpool"
+                title="Launchpool"
+                description={
+                  language === 'zh'
+                    ? '质押 BNB/FDUSD 免费获取新币'
+                    : 'Stake BNB/FDUSD to earn new tokens for free'
+                }
+              />
+              <ExternalLinkCard
+                href="https://launchpad.binance.com/en/launchpad"
+                title="Launchpad"
+                description={
+                  language === 'zh'
+                    ? '使用 BNB 参与新项目 IEO'
+                    : 'Participate in new project IEOs with BNB'
+                }
+              />
+              <ExternalLinkCard
+                href="https://www.binance.com/en/activity"
+                title={language === 'zh' ? '活动中心' : 'Promotions'}
+                description={
+                  language === 'zh'
+                    ? '交易活动、空投和奖励'
+                    : 'Trading promotions, airdrops and rewards'
+                }
+              />
+            </div>
           </div>
 
           {/* 日历提醒卡片 */}
@@ -86,42 +180,68 @@ export default function ActivitiesPage() {
                 : 'Tip: Follow official Binance announcements for latest events. New listings often come with high volatility.'}
             </div>
           </div>
-        </div>
 
-        {/* 快捷链接 */}
-        <div className="mt-4 p-4 bg-card border border-border rounded-lg">
-          <h3 className="font-semibold mb-3">
-            {language === 'zh' ? '快捷链接' : 'Quick Links'}
-          </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-            <QuickLink
-              href="https://www.binance.com/en/support/announcement/new-cryptocurrency-listing"
-              label={language === 'zh' ? '新上币' : 'New Listings'}
-            />
-            <QuickLink
-              href="https://launchpad.binance.com/en/launchpool"
-              label="Launchpool"
-            />
-            <QuickLink
-              href="https://launchpad.binance.com/en/launchpad"
-              label="Launchpad"
-            />
-            <QuickLink
-              href="https://www.binance.com/en/support/announcement/delisting"
-              label={language === 'zh' ? '下架公告' : 'Delisting'}
-            />
-            <QuickLink
-              href="https://www.binance.com/en/support/announcement/api-updates"
-              label="API Updates"
-            />
-            <QuickLink
-              href="https://www.binance.com/en/activity"
-              label={language === 'zh' ? '活动中心' : 'Promotions'}
-            />
+          {/* 社交媒体 */}
+          <div className="bg-card border border-border rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <Globe className="h-5 w-5 text-primary" />
+              <h3 className="font-semibold">
+                {language === 'zh' ? '官方渠道' : 'Official Channels'}
+              </h3>
+            </div>
+            <div className="space-y-2">
+              <ExternalLinkCard
+                href="https://twitter.com/binance"
+                title="Twitter / X"
+                description="@binance"
+              />
+              <ExternalLinkCard
+                href="https://t.me/binanceexchange"
+                title="Telegram"
+                description={language === 'zh' ? 'Binance 官方群' : 'Official Binance Group'}
+              />
+              <ExternalLinkCard
+                href="https://www.binance.com/en/blog"
+                title="Binance Blog"
+                description={
+                  language === 'zh'
+                    ? '深度文章和行业分析'
+                    : 'In-depth articles and industry analysis'
+                }
+              />
+            </div>
           </div>
         </div>
       </div>
     </div>
+  )
+}
+
+/** 外部链接卡片 */
+function ExternalLinkCard({
+  href,
+  title,
+  description,
+}: {
+  href: string
+  title: string
+  description: string
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center justify-between p-3 bg-accent/30 rounded-lg hover:bg-accent/50 transition-colors group"
+    >
+      <div>
+        <div className="font-medium text-sm group-hover:text-primary transition-colors">
+          {title}
+        </div>
+        <div className="text-xs text-muted-foreground">{description}</div>
+      </div>
+      <ExternalLink className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+    </a>
   )
 }
 
@@ -154,20 +274,5 @@ function DateItem({
         </div>
       )}
     </div>
-  )
-}
-
-/** 快捷链接组件 */
-function QuickLink({ href, label }: { href: string; label: string }) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex items-center justify-center gap-1 px-3 py-2 text-sm bg-accent rounded-lg hover:bg-accent/80 transition-colors text-center"
-    >
-      {label}
-      <ExternalLink className="h-3 w-3" />
-    </a>
   )
 }

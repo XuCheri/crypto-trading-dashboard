@@ -123,6 +123,7 @@ export async function getKlines(
 
 /**
  * 将原始 Ticker24hr 转换为 UI 友好的格式
+ * @deprecated REST API 不可用，使用 transformWsTicker 替代
  */
 export function transformTicker(ticker: Ticker24hr): TickerData {
   return {
@@ -135,6 +136,7 @@ export function transformTicker(ticker: Ticker24hr): TickerData {
     volume: parseFloat(ticker.volume),
     quoteVolume: parseFloat(ticker.quoteVolume),
     openPrice: parseFloat(ticker.openPrice),
+    updatedAt: ticker.closeTime,
   }
 }
 

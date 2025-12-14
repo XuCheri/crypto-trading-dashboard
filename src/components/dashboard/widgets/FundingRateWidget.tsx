@@ -1,34 +1,60 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
-import { getFundingRates, transformFundingRates, sortByFundingRate } from '@/lib/api/futures'
+import { useState, useCallback, useRef } from 'react'
+import { useMarkPriceStream, MarkPriceStreamData } from '@/hooks/useBinanceStream'
 import { cn } from '@/lib/utils'
 import { useLanguage } from '@/lib/store/ui'
+import { Wifi, WifiOff } from 'lucide-react'
+
+interface FundingRateItem {
+  symbol: string
+  fundingRate: number
+}
 
 /**
- * 资金费率 Widget
+ * 资金费率 Widget（纯 WebSocket 模式）
  * 显示资金费率极值（高正/高负）
  */
 export function FundingRateWidget() {
   const language = useLanguage()
+  const [isConnected, setIsConnected] = useState(false)
+  const dataRef = useRef<Map<string, FundingRateItem>>(new Map())
+  const [highPositive, setHighPositive] = useState<FundingRateItem[]>([])
+  const [highNegative, setHighNegative] = useState<FundingRateItem[]>([])
 
-  const { data: fundingRates, isLoading } = useQuery({
-    queryKey: ['fundingRates'],
-    queryFn: async () => {
-      const raw = await getFundingRates()
-      return transformFundingRates(raw)
-    },
-    refetchInterval: 60000,
-  })
+  // 处理标记价格消息
+  const handleMarkPriceUpdate = useCallback((data: MarkPriceStreamData | MarkPriceStreamData[]) => {
+    setIsConnected(true)
+    const items = Array.isArray(data) ? data : [data]
 
-  // 最高正费率和最高负费率各5个
-  const highPositive = fundingRates
-    ? sortByFundingRate(fundingRates.filter((r) => r.fundingRate > 0), true).slice(0, 5)
-    : []
+    items.forEach((item) => {
+      if (item.s.endsWith('USDT')) {
+        dataRef.current.set(item.s, {
+          symbol: item.s,
+          fundingRate: parseFloat(item.r),
+        })
+      }
+    })
 
-  const highNegative = fundingRates
-    ? sortByFundingRate(fundingRates.filter((r) => r.fundingRate < 0), false).slice(0, 5)
-    : []
+    // 计算高正/高负费率
+    const allRates = Array.from(dataRef.current.values())
+
+    const positive = allRates
+      .filter((r) => r.fundingRate > 0)
+      .sort((a, b) => b.fundingRate - a.fundingRate)
+      .slice(0, 5)
+
+    const negative = allRates
+      .filter((r) => r.fundingRate < 0)
+      .sort((a, b) => a.fundingRate - b.fundingRate)
+      .slice(0, 5)
+
+    setHighPositive(positive)
+    setHighNegative(negative)
+  }, [])
+
+  // 订阅全市场标记价格
+  useMarkPriceStream(handleMarkPriceUpdate, { enabled: true })
 
   // 格式化资金费率
   const formatFundingRate = (rate: number) => {
@@ -37,16 +63,25 @@ export function FundingRateWidget() {
     return `${sign}${percent.toFixed(4)}%`
   }
 
-  if (isLoading) {
+  if (!isConnected) {
     return (
-      <div className="p-4 flex items-center justify-center h-full">
-        <div className="text-muted-foreground text-sm">Loading...</div>
+      <div className="p-4 flex flex-col items-center justify-center h-full gap-2">
+        <WifiOff className="h-5 w-5 text-yellow-500 animate-pulse" />
+        <div className="text-muted-foreground text-sm">
+          {language === 'zh' ? '正在连接...' : 'Connecting...'}
+        </div>
       </div>
     )
   }
 
   return (
     <div className="flex flex-col h-full">
+      {/* 连接状态 */}
+      <div className="flex items-center justify-end px-3 pt-2 gap-1 text-xs text-green-500">
+        <Wifi className="h-3 w-3" />
+        <span>{language === 'zh' ? '实时' : 'Live'}</span>
+      </div>
+
       <div className="flex-1 grid grid-cols-2 gap-2 p-3">
         {/* 高正费率 */}
         <div className="bg-up/5 rounded-lg p-2">
@@ -65,7 +100,7 @@ export function FundingRateWidget() {
             ))}
             {highPositive.length === 0 && (
               <div className="text-xs text-muted-foreground text-center py-2">
-                {language === 'zh' ? '暂无' : 'None'}
+                {language === 'zh' ? '等待数据' : 'Waiting'}
               </div>
             )}
           </div>
@@ -88,7 +123,7 @@ export function FundingRateWidget() {
             ))}
             {highNegative.length === 0 && (
               <div className="text-xs text-muted-foreground text-center py-2">
-                {language === 'zh' ? '暂无' : 'None'}
+                {language === 'zh' ? '等待数据' : 'Waiting'}
               </div>
             )}
           </div>

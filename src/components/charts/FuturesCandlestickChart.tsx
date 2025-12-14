@@ -66,6 +66,7 @@ interface FuturesCandlestickChartProps {
 /**
  * 合约 K 线图表组件
  * 支持 USDT-M 和 COIN-M 合约
+ * 使用 REST API 获取历史数据 + WebSocket 实时更新
  */
 export function FuturesCandlestickChart({
   symbol,
@@ -87,8 +88,8 @@ export function FuturesCandlestickChart({
   // 最后一根 K 线数据
   const lastBarRef = useRef<KlineData | null>(null)
 
-  // 获取历史 K 线数据
-  const { data: klineData, isLoading } = useQuery({
+  // 获取历史 K 线数据（通过代理）
+  const { data: klineData, isLoading, error } = useQuery({
     queryKey: ['futuresKlines', symbol, marketType, currentInterval],
     queryFn: async () => {
       const getKlines = marketType === 'usdt-m' ? getFuturesKlines : getCoinMKlines
@@ -97,6 +98,7 @@ export function FuturesCandlestickChart({
     },
     enabled: !!symbol,
     staleTime: 60000,
+    retry: 2,
   })
 
   // 创建图表
@@ -138,7 +140,7 @@ export function FuturesCandlestickChart({
       },
     })
 
-    // 创建 K 线系列 (v5 API)
+    // 创建 K 线系列
     const candlestickSeries = chart.addSeries(CandlestickSeries, {
       upColor: CHART_COLORS.upColor,
       downColor: CHART_COLORS.downColor,
@@ -147,7 +149,7 @@ export function FuturesCandlestickChart({
       borderVisible: false,
     })
 
-    // 创建成交量系列 (v5 API)
+    // 创建成交量系列
     let volumeSeries: ISeriesApi<'Histogram'> | null = null
     if (showVolume) {
       volumeSeries = chart.addSeries(HistogramSeries, {
@@ -289,7 +291,12 @@ export function FuturesCandlestickChart({
       <div className="relative" style={{ height }}>
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
-            <div className="text-muted-foreground">Loading...</div>
+            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
+            <div className="text-destructive text-sm">加载失败，请重试</div>
           </div>
         )}
         <div ref={chartContainerRef} className="w-full h-full" />

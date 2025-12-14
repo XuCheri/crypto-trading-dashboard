@@ -2,6 +2,7 @@
  * Binance API 客户端
  *
  * 功能:
+ * - 通过 Next.js API Routes 代理访问 Binance API（解决 CORS 问题）
  * - 封装 fetch 请求
  * - 请求权重追踪（读取 X-MBX-USED-WEIGHT 响应头）
  * - 频率限制处理（权重超限时延迟）
@@ -121,22 +122,25 @@ class BinanceClient {
   }
 
   /**
-   * 构建完整 URL
+   * 构建完整 URL（支持相对路径代理）
    */
   private buildUrl(
     baseUrl: string,
     endpoint: string,
     params?: Record<string, string | number>
   ): string {
-    const url = new URL(endpoint, baseUrl)
+    // 使用代理路径：baseUrl 是 /api/binance/xxx，endpoint 是 /api/v3/xxx
+    const path = `${baseUrl}${endpoint}`
+    const searchParams = new URLSearchParams()
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
-          url.searchParams.append(key, String(value))
+          searchParams.append(key, String(value))
         }
       })
     }
-    return url.toString()
+    const queryString = searchParams.toString()
+    return queryString ? `${path}?${queryString}` : path
   }
 
   /**

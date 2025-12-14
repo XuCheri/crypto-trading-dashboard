@@ -1,55 +1,102 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
-import { getTicker24hr, transformTickers, filterUsdtPairs } from '@/lib/api/spot'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useBinanceStream } from '@/hooks/useBinanceStream'
+import { TickerData, transformWsTicker, WsTicker } from '@/lib/api/types'
 import { formatPrice, formatPercent, formatVolume, getPriceColorClass, cn } from '@/lib/utils'
 import { useLanguage } from '@/lib/store/ui'
-import { TrendingUp, TrendingDown, Activity, DollarSign } from 'lucide-react'
+import { TrendingUp, TrendingDown, Activity, DollarSign, Wifi, WifiOff } from 'lucide-react'
 
 /**
- * 市场概览 Widget
+ * 市场概览 Widget（纯 WebSocket 模式）
  * 显示市场统计数据
  */
 export function MarketOverview() {
   const language = useLanguage()
+  const [isConnected, setIsConnected] = useState(false)
+  const tickersRef = useRef<Map<string, TickerData>>(new Map())
+  const [stats, setStats] = useState<{
+    gainers: number
+    losers: number
+    totalVolume: number
+    avgChange: number
+    btc: TickerData | null
+    eth: TickerData | null
+    total: number
+  } | null>(null)
 
-  const { data: tickers, isLoading } = useQuery({
-    queryKey: ['spotTickers'],
-    queryFn: async () => {
-      const raw = await getTicker24hr()
-      return transformTickers(raw)
-    },
-    refetchInterval: 30000,
+  // 处理 ticker 消息
+  const handleTickerMessage = useCallback((data: unknown) => {
+    setIsConnected(true)
+
+    // 全市场 ticker 返回数组
+    const items = Array.isArray(data) ? data : [data]
+
+    items.forEach((item) => {
+      const ticker = item as WsTicker
+      if (ticker.e === '24hrTicker' && ticker.s.endsWith('USDT')) {
+        tickersRef.current.set(ticker.s, transformWsTicker(ticker))
+      }
+    })
+
+    // 计算统计数据
+    const allTickers = Array.from(tickersRef.current.values())
+    if (allTickers.length > 0) {
+      const gainers = allTickers.filter((t) => t.priceChangePercent > 0).length
+      const losers = allTickers.filter((t) => t.priceChangePercent < 0).length
+      const totalVolume = allTickers.reduce((sum, t) => sum + t.quoteVolume, 0)
+      const avgChange =
+        allTickers.reduce((sum, t) => sum + t.priceChangePercent, 0) / allTickers.length
+      const btc = tickersRef.current.get('BTCUSDT') || null
+      const eth = tickersRef.current.get('ETHUSDT') || null
+
+      setStats({
+        gainers,
+        losers,
+        totalVolume,
+        avgChange,
+        btc,
+        eth,
+        total: allTickers.length,
+      })
+    }
+  }, [])
+
+  // 订阅全市场 ticker
+  useBinanceStream(['!ticker@arr'], handleTickerMessage, {
+    enabled: true,
+    market: 'spot',
   })
 
-  // 计算统计数据
-  const stats = tickers
-    ? (() => {
-        const usdtPairs = filterUsdtPairs(tickers)
-        const gainers = usdtPairs.filter((t) => t.priceChangePercent > 0).length
-        const losers = usdtPairs.filter((t) => t.priceChangePercent < 0).length
-        const totalVolume = usdtPairs.reduce((sum, t) => sum + t.quoteVolume, 0)
-        const avgChange =
-          usdtPairs.reduce((sum, t) => sum + t.priceChangePercent, 0) / usdtPairs.length
+  if (!isConnected) {
+    return (
+      <div className="p-4 flex flex-col items-center justify-center h-full gap-2">
+        <WifiOff className="h-6 w-6 text-yellow-500 animate-pulse" />
+        <div className="text-muted-foreground text-sm">
+          {language === 'zh' ? '正在连接...' : 'Connecting...'}
+        </div>
+      </div>
+    )
+  }
 
-        // BTC 和 ETH 数据
-        const btc = tickers.find((t) => t.symbol === 'BTCUSDT')
-        const eth = tickers.find((t) => t.symbol === 'ETHUSDT')
-
-        return { gainers, losers, totalVolume, avgChange, btc, eth, total: usdtPairs.length }
-      })()
-    : null
-
-  if (isLoading || !stats) {
+  if (!stats) {
     return (
       <div className="p-4 flex items-center justify-center h-full">
-        <div className="text-muted-foreground text-sm">Loading...</div>
+        <div className="text-muted-foreground text-sm">
+          {language === 'zh' ? '等待数据...' : 'Waiting for data...'}
+        </div>
       </div>
     )
   }
 
   return (
     <div className="p-4 space-y-4">
+      {/* 连接状态 */}
+      <div className="flex items-center justify-end gap-1 text-xs text-green-500">
+        <Wifi className="h-3 w-3" />
+        <span>{language === 'zh' ? '实时' : 'Live'}</span>
+      </div>
+
       {/* BTC & ETH */}
       <div className="grid grid-cols-2 gap-3">
         {stats.btc && (

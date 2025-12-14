@@ -5,6 +5,13 @@ import { useDepthStream, DepthStreamData } from '@/hooks/useBinanceStream'
 import { formatPrice, formatNumber, cn } from '@/lib/utils'
 import { useLanguage } from '@/lib/store/ui'
 
+/** 部分深度流数据格式 */
+interface PartialDepthStreamData {
+  lastUpdateId: number
+  bids: [string, string][]
+  asks: [string, string][]
+}
+
 interface OrderbookProps {
   symbol: string
   rows?: number
@@ -30,9 +37,20 @@ export function Orderbook({ symbol, rows = 15, className }: OrderbookProps) {
   const [asks, setAsks] = useState<[string, string][]>([])
 
   // 处理深度数据更新
-  const handleDepthUpdate = useCallback((data: DepthStreamData) => {
-    setBids(data.b.slice(0, 20))
-    setAsks(data.a.slice(0, 20))
+  // 支持两种格式：
+  // - 增量深度流 (depthUpdate): { b: [...], a: [...] }
+  // - 部分深度流 (depth<levels>): { bids: [...], asks: [...] }
+  const handleDepthUpdate = useCallback((data: DepthStreamData | PartialDepthStreamData) => {
+    // 检查数据格式，兼容两种流
+    const bidsData = 'bids' in data ? data.bids : data.b
+    const asksData = 'asks' in data ? data.asks : data.a
+
+    if (bidsData) {
+      setBids(bidsData.slice(0, 20))
+    }
+    if (asksData) {
+      setAsks(asksData.slice(0, 20))
+    }
   }, [])
 
   // 订阅深度数据

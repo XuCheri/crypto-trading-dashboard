@@ -15,6 +15,7 @@ import { FuturesTickerPrice } from '@/components/market/FuturesTickerPrice'
 import { FuturesCandlestickChart } from '@/components/charts/FuturesCandlestickChart'
 import { FuturesOrderbook } from '@/components/market/FuturesOrderbook'
 import { FuturesTradeHistory } from '@/components/market/FuturesTradeHistory'
+import { IndicatorsPanel } from '@/components/derivatives/IndicatorsPanel'
 import { Search, ChevronDown } from 'lucide-react'
 
 type SortField = 'symbol' | 'price' | 'change' | 'volume' | 'fundingRate'
@@ -93,9 +94,9 @@ export default function UsdtMFuturesPage() {
   )
 
   return (
-    <div className="h-[calc(100vh-3.5rem)] flex flex-col">
+    <div className="h-[calc(100vh-3.5rem)] flex flex-col overflow-hidden">
       {/* 顶部工具栏 */}
-      <div className="flex items-center justify-between p-4 border-b border-border bg-card">
+      <div className="flex items-center justify-between p-4 border-b border-border bg-card flex-shrink-0">
         {/* 交易对选择器 */}
         <div className="flex items-center gap-4">
           <div className="relative">
@@ -154,7 +155,7 @@ export default function UsdtMFuturesPage() {
       {viewMode === 'chart' ? (
         <div className="flex-1 flex overflow-hidden">
           {/* 左侧：交易对列表 */}
-          <div className="w-72 border-r border-border flex flex-col bg-card">
+          <div className="w-64 border-r border-border flex flex-col bg-card flex-shrink-0">
             {/* 搜索 */}
             <div className="p-2 border-b border-border">
               <div className="relative">
@@ -173,7 +174,7 @@ export default function UsdtMFuturesPage() {
             <div className="grid grid-cols-3 px-3 py-1.5 text-xs text-muted-foreground border-b border-border">
               <div>{language === 'zh' ? '合约' : 'Contract'}</div>
               <div className="text-right">{language === 'zh' ? '价格' : 'Price'}</div>
-              <div className="text-right">{language === 'zh' ? '资金费率' : 'Funding'}</div>
+              <div className="text-right">{language === 'zh' ? '费率' : 'Rate'}</div>
             </div>
 
             {/* 交易对列表 */}
@@ -214,16 +215,25 @@ export default function UsdtMFuturesPage() {
             </div>
           </div>
 
-          {/* 中间：图表 */}
-          <div className="flex-1 flex flex-col bg-background">
+          {/* 中间：图表和指标 */}
+          <div className="flex-1 flex flex-col bg-background overflow-hidden">
             {selectedSymbol ? (
-              <FuturesCandlestickChart
-                symbol={selectedSymbol}
-                marketType="usdt-m"
-                height={500}
-                showVolume
-                className="flex-1"
-              />
+              <>
+                {/* K线图表 */}
+                <div className="flex-shrink-0">
+                  <FuturesCandlestickChart
+                    symbol={selectedSymbol}
+                    marketType="usdt-m"
+                    height={380}
+                    showVolume
+                  />
+                </div>
+
+                {/* 衍生品指标面板 */}
+                <div className="flex-1 overflow-y-auto p-4 border-t border-border">
+                  <IndicatorsPanel symbol={selectedSymbol} />
+                </div>
+              </>
             ) : (
               <div className="flex-1 flex items-center justify-center text-muted-foreground">
                 {language === 'zh' ? '请选择合约' : 'Select a contract'}
@@ -232,20 +242,20 @@ export default function UsdtMFuturesPage() {
           </div>
 
           {/* 右侧：订单簿和成交 */}
-          <div className="w-72 border-l border-border flex flex-col bg-card">
+          <div className="w-64 border-l border-border flex flex-col bg-card flex-shrink-0">
             {selectedSymbol ? (
               <>
                 <FuturesOrderbook
                   symbol={selectedSymbol}
                   marketType="usdt-m"
-                  rows={12}
+                  rows={10}
                   className="flex-1"
                 />
                 <FuturesTradeHistory
                   symbol={selectedSymbol}
                   marketType="usdt-m"
-                  maxTrades={30}
-                  className="h-64 border-t border-border"
+                  maxTrades={20}
+                  className="h-48 border-t border-border"
                 />
               </>
             ) : (

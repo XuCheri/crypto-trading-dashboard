@@ -1,48 +1,60 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import {
-  getFundingRates,
-  transformFundingRates,
-  sortByFundingRate,
-  filterPositiveFunding,
-  filterNegativeFunding,
-} from '@/lib/api/futures'
-import { FundingRateData } from '@/lib/api/types'
-import { formatPrice, cn } from '@/lib/utils'
+import { getFundingRates } from '@/lib/api/futures'
+import { cn } from '@/lib/utils'
 import { useLanguage } from '@/lib/store/ui'
-import { ArrowUpDown, TrendingUp, TrendingDown, Search } from 'lucide-react'
+import { ArrowUpDown, TrendingUp, TrendingDown, Search, RefreshCw } from 'lucide-react'
+
+interface FundingRateItem {
+  symbol: string
+  fundingRate: number
+  annualizedRate: number
+  nextFundingTime: number
+  markPrice: number
+}
 
 interface FundingRatePanelProps {
   className?: string
   maxItems?: number
+  compact?: boolean
 }
 
 type FilterMode = 'all' | 'positive' | 'negative'
-type SortMode = 'rate' | 'annualized'
 
 /**
  * 资金费率面板
- * 显示所有合约的资金费率排名
+ *
+ * 通过 REST API 获取资金费率数据（更可靠）
  */
 export function FundingRatePanel({
   className,
   maxItems = 50,
+  compact = false,
 }: FundingRatePanelProps) {
   const language = useLanguage()
   const [search, setSearch] = useState('')
   const [filterMode, setFilterMode] = useState<FilterMode>('all')
   const [sortDesc, setSortDesc] = useState(true)
 
-  // 获取资金费率数据
-  const { data: fundingRates, isLoading } = useQuery({
+  // 使用 REST API 获取资金费率
+  const { data: fundingRates, isLoading, isError, refetch } = useQuery({
     queryKey: ['fundingRates'],
     queryFn: async () => {
-      const raw = await getFundingRates()
-      return transformFundingRates(raw)
+      const data = await getFundingRates()
+      return data
+        .filter((r) => r.symbol.endsWith('USDT'))
+        .map((r) => ({
+          symbol: r.symbol,
+          fundingRate: parseFloat(r.fundingRate),
+          annualizedRate: parseFloat(r.fundingRate) * 3 * 365 * 100,
+          nextFundingTime: r.fundingTime,
+          markPrice: r.markPrice ? parseFloat(r.markPrice) : 0,
+        }))
     },
-    refetchInterval: 60000, // 每分钟刷新
+    refetchInterval: 30000, // 每 30 秒刷新
+    staleTime: 10000,
   })
 
   // 过滤和排序
@@ -55,18 +67,24 @@ export function FundingRatePanel({
 
     // 按正负过滤
     if (filterMode === 'positive') {
-      filtered = filterPositiveFunding(filtered)
+      filtered = filtered.filter((r) => r.fundingRate > 0)
     } else if (filterMode === 'negative') {
-      filtered = filterNegativeFunding(filtered)
+      filtered = filtered.filter((r) => r.fundingRate < 0)
     }
 
-    // 排序
-    return sortByFundingRate(filtered, sortDesc).slice(0, maxItems)
+    // 按资金费率绝对值排序
+    return filtered
+      .sort((a, b) =>
+        sortDesc
+          ? Math.abs(b.fundingRate) - Math.abs(a.fundingRate)
+          : Math.abs(a.fundingRate) - Math.abs(b.fundingRate)
+      )
+      .slice(0, maxItems)
   }, [fundingRates, search, filterMode, sortDesc, maxItems])
 
   // 统计信息
   const stats = useMemo(() => {
-    if (!fundingRates) return null
+    if (!fundingRates || fundingRates.length === 0) return null
 
     const positive = fundingRates.filter((r) => r.fundingRate > 0).length
     const negative = fundingRates.filter((r) => r.fundingRate < 0).length
@@ -100,14 +118,72 @@ export function FundingRatePanel({
     return `${hours}h ${minutes}m`
   }
 
+  if (compact) {
+    return (
+      <div className={cn('flex flex-col bg-card border border-border rounded-lg', className)}>
+        {/* 紧凑模式头部 */}
+        <div className="p-3 border-b border-border flex items-center justify-between">
+          <h3 className="font-semibold text-sm">
+            {language === 'zh' ? '资金费率' : 'Funding Rates'}
+          </h3>
+          <button
+            onClick={() => refetch()}
+            className="p-1 text-muted-foreground hover:text-foreground"
+          >
+            <RefreshCw className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
+          </button>
+        </div>
+
+        {/* 紧凑列表 */}
+        <div className="flex-1 overflow-y-auto max-h-[300px]">
+          {isLoading ? (
+            <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
+              <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+              {language === 'zh' ? '加载中...' : 'Loading...'}
+            </div>
+          ) : isError ? (
+            <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
+              {language === 'zh' ? '加载失败' : 'Failed to load'}
+            </div>
+          ) : (
+            filteredRates.slice(0, 10).map((rate) => (
+              <div
+                key={rate.symbol}
+                className="flex items-center justify-between px-3 py-1.5 text-xs hover:bg-accent/50"
+              >
+                <span className="font-medium">{rate.symbol.replace('USDT', '')}</span>
+                <span
+                  className={cn(
+                    'tabular-nums font-medium',
+                    rate.fundingRate >= 0 ? 'text-up' : 'text-down'
+                  )}
+                >
+                  {formatFundingRate(rate.fundingRate)}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={cn('flex flex-col bg-card border border-border rounded-lg', className)}>
       {/* 头部 */}
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold">
-            {language === 'zh' ? '资金费率排行' : 'Funding Rate Rankings'}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold">
+              {language === 'zh' ? '资金费率排行' : 'Funding Rate Rankings'}
+            </h3>
+            <button
+              onClick={() => refetch()}
+              className="p-1 text-muted-foreground hover:text-foreground"
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
+            </button>
+          </div>
           {stats && (
             <div className="flex items-center gap-3 text-xs">
               <span className="text-up">
@@ -193,8 +269,19 @@ export function FundingRatePanel({
       {/* 列表 */}
       <div className="flex-1 overflow-y-auto max-h-[400px]">
         {isLoading ? (
-          <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
+          <div className="flex flex-col items-center justify-center h-32 text-sm text-muted-foreground">
+            <RefreshCw className="h-5 w-5 animate-spin mb-2" />
             {language === 'zh' ? '加载中...' : 'Loading...'}
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center h-32 text-sm text-muted-foreground">
+            <div className="mb-2">{language === 'zh' ? '加载失败' : 'Failed to load'}</div>
+            <button
+              onClick={() => refetch()}
+              className="text-xs text-primary hover:underline"
+            >
+              {language === 'zh' ? '重试' : 'Retry'}
+            </button>
           </div>
         ) : filteredRates.length === 0 ? (
           <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
@@ -224,7 +311,7 @@ export function FundingRatePanel({
                 {formatAnnualized(rate.annualizedRate)}
               </div>
               <div className="text-right tabular-nums text-muted-foreground">
-                {getNextFundingTime(rate.fundingTime)}
+                {getNextFundingTime(rate.nextFundingTime)}
               </div>
             </div>
           ))

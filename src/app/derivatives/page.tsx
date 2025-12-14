@@ -6,25 +6,14 @@ import { FundingRatePanel } from '@/components/derivatives/FundingRatePanel'
 import { OpenInterestChart } from '@/components/derivatives/OpenInterestChart'
 import { LongShortRatioChart } from '@/components/derivatives/LongShortRatioChart'
 import { TopTraderRatioChart } from '@/components/derivatives/TopTraderRatioChart'
-import { Search, ChevronDown } from 'lucide-react'
+import { Info, Wifi } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-/** 热门合约列表 */
-const POPULAR_SYMBOLS = [
-  'BTCUSDT',
-  'ETHUSDT',
-  'BNBUSDT',
-  'SOLUSDT',
-  'XRPUSDT',
-  'DOGEUSDT',
-  'ADAUSDT',
-  'AVAXUSDT',
-]
+const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT']
 
 export default function DerivativesPage() {
   const language = useLanguage()
   const [selectedSymbol, setSelectedSymbol] = useState('BTCUSDT')
-  const [showSymbolDropdown, setShowSymbolDropdown] = useState(false)
 
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col overflow-hidden">
@@ -35,81 +24,62 @@ export default function DerivativesPage() {
             {language === 'zh' ? '衍生品指标' : 'Derivatives Analytics'}
           </h1>
 
-          {/* 合约选择器 */}
-          <div className="relative">
-            <button
-              onClick={() => setShowSymbolDropdown(!showSymbolDropdown)}
-              className="flex items-center gap-2 px-3 py-2 bg-accent rounded-lg hover:bg-accent/80"
-            >
-              <span className="font-semibold">{selectedSymbol}</span>
-              <ChevronDown className={cn('h-4 w-4 transition-transform', showSymbolDropdown && 'rotate-180')} />
-            </button>
-
-            {showSymbolDropdown && (
-              <div className="absolute top-full left-0 mt-1 w-48 bg-card border border-border rounded-lg shadow-lg z-50">
-                <div className="p-2">
-                  <div className="text-xs text-muted-foreground px-2 py-1 mb-1">
-                    {language === 'zh' ? '热门合约' : 'Popular'}
-                  </div>
-                  {POPULAR_SYMBOLS.map((symbol) => (
-                    <button
-                      key={symbol}
-                      onClick={() => {
-                        setSelectedSymbol(symbol)
-                        setShowSymbolDropdown(false)
-                      }}
-                      className={cn(
-                        'w-full text-left px-2 py-1.5 text-sm rounded hover:bg-accent transition-colors',
-                        selectedSymbol === symbol && 'bg-accent text-primary'
-                      )}
-                    >
-                      {symbol.replace('USDT', '')}
-                      <span className="text-muted-foreground">/USDT</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+          {/* 交易对选择 */}
+          <div className="flex items-center gap-1">
+            {SYMBOLS.map((sym) => (
+              <button
+                key={sym}
+                onClick={() => setSelectedSymbol(sym)}
+                className={cn(
+                  'px-3 py-1.5 text-sm rounded transition-colors',
+                  selectedSymbol === sym
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                )}
+              >
+                {sym.replace('USDT', '')}
+              </button>
+            ))}
           </div>
         </div>
 
-        <div className="text-sm text-muted-foreground">
-          {language === 'zh'
-            ? '数据来源: Binance USDT-M 永续合约'
-            : 'Data: Binance USDT-M Perpetual'}
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Wifi className="h-4 w-4 text-green-500" />
+          {language === 'zh' ? '数据来源: REST API + WebSocket' : 'Data: REST API + WebSocket'}
         </div>
       </div>
 
       {/* 主内容区 */}
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* 资金费率排行 */}
-          <div className="xl:col-span-1 xl:row-span-2">
-            <FundingRatePanel maxItems={30} className="h-full" />
+          <div className="lg:col-span-1">
+            <FundingRatePanel maxItems={30} className="h-[450px]" />
           </div>
 
-          {/* 持仓量图表 */}
-          <div className="xl:col-span-2">
-            <OpenInterestChart symbol={selectedSymbol} height={280} />
+          {/* 持仓量 */}
+          <div className="lg:col-span-1">
+            <OpenInterestChart symbol={selectedSymbol} height={350} />
           </div>
 
-          {/* 多空比图表 */}
-          <div>
-            <LongShortRatioChart symbol={selectedSymbol} height={220} />
+          {/* 多空比 */}
+          <div className="lg:col-span-1">
+            <LongShortRatioChart symbol={selectedSymbol} height={280} />
           </div>
 
-          {/* 大户持仓比图表 */}
-          <div>
-            <TopTraderRatioChart symbol={selectedSymbol} height={220} />
+          {/* 大户持仓比 */}
+          <div className="lg:col-span-1">
+            <TopTraderRatioChart symbol={selectedSymbol} height={280} />
           </div>
         </div>
 
-        {/* 市场情绪总结 */}
+        {/* 指标说明 */}
         <div className="mt-4 p-4 bg-card border border-border rounded-lg">
-          <h3 className="font-semibold mb-3">
+          <h3 className="font-semibold mb-3 flex items-center gap-2">
+            <Info className="h-4 w-4" />
             {language === 'zh' ? '指标说明' : 'Indicator Guide'}
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div>
               <div className="font-medium text-primary mb-1">
                 {language === 'zh' ? '资金费率' : 'Funding Rate'}
@@ -122,7 +92,7 @@ export default function DerivativesPage() {
             </div>
             <div>
               <div className="font-medium text-primary mb-1">
-                {language === 'zh' ? '持仓量 (OI)' : 'Open Interest'}
+                {language === 'zh' ? '持仓量' : 'Open Interest'}
               </div>
               <p className="text-muted-foreground">
                 {language === 'zh'
@@ -153,14 +123,6 @@ export default function DerivativesPage() {
           </div>
         </div>
       </div>
-
-      {/* 点击外部关闭下拉框 */}
-      {showSymbolDropdown && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setShowSymbolDropdown(false)}
-        />
-      )}
     </div>
   )
 }

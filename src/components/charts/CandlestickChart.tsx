@@ -15,7 +15,12 @@ import {
 } from 'lightweight-charts'
 import { useQuery } from '@tanstack/react-query'
 import { getKlines, transformKlines } from '@/lib/api/spot'
-import { useKlineStream, KlineStreamData } from '@/hooks/useBinanceStream'
+import {
+  useKlineStream,
+  useFuturesKlineStream,
+  useCoinMKlineStream,
+  KlineStreamData,
+} from '@/hooks/useBinanceStream'
 import { KlineInterval, CandlestickData as KlineData } from '@/lib/api/types'
 import { cn } from '@/lib/utils'
 
@@ -52,11 +57,13 @@ interface CandlestickChartProps {
   showVolume?: boolean
   onIntervalChange?: (interval: KlineInterval) => void
   className?: string
+  /** 市场类型，默认 spot */
+  market?: 'spot' | 'futures-usdt' | 'futures-coin'
 }
 
 /**
  * K 线图表组件
- * 使用 Lightweight Charts 渲染，支持实时 WebSocket 更新
+ * 使用 REST API 获取历史数据 + WebSocket 实时更新
  */
 export function CandlestickChart({
   symbol,
@@ -65,6 +72,7 @@ export function CandlestickChart({
   showVolume = true,
   onIntervalChange,
   className,
+  market = 'spot',
 }: CandlestickChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -74,18 +82,19 @@ export function CandlestickChart({
   // 当前选中的周期
   const [currentInterval, setCurrentInterval] = useState<KlineInterval>(interval)
 
-  // 最后一根 K 线数据（用于实时更新）
+  // 最后一根 K 线数据
   const lastBarRef = useRef<KlineData | null>(null)
 
-  // 获取历史 K 线数据
-  const { data: klineData, isLoading } = useQuery({
-    queryKey: ['klines', symbol, currentInterval],
+  // 获取历史 K 线数据（通过代理）
+  const { data: klineData, isLoading, error } = useQuery({
+    queryKey: ['klines', symbol, market, currentInterval],
     queryFn: async () => {
       const raw = await getKlines(symbol, currentInterval, 500)
       return transformKlines(raw)
     },
     enabled: !!symbol,
     staleTime: 60000,
+    retry: 2,
   })
 
   // 创建图表
@@ -134,7 +143,7 @@ export function CandlestickChart({
       },
     })
 
-    // 创建 K 线系列 (v5 API)
+    // 创建 K 线系列
     const candlestickSeries = chart.addSeries(CandlestickSeries, {
       upColor: CHART_COLORS.upColor,
       downColor: CHART_COLORS.downColor,
@@ -143,7 +152,7 @@ export function CandlestickChart({
       borderVisible: false,
     })
 
-    // 创建成交量系列 (v5 API)
+    // 创建成交量系列
     let volumeSeries: ISeriesApi<'Histogram'> | null = null
     if (showVolume) {
       volumeSeries = chart.addSeries(HistogramSeries, {
@@ -153,7 +162,6 @@ export function CandlestickChart({
         priceScaleId: 'volume',
       })
 
-      // 设置成交量价格轴
       chart.priceScale('volume').applyOptions({
         scaleMargins: {
           top: 0.85,
@@ -191,7 +199,6 @@ export function CandlestickChart({
   useEffect(() => {
     if (!klineData || !candlestickSeriesRef.current) return
 
-    // 格式化 K 线数据
     const candleData: CandlestickData[] = klineData.map((k) => ({
       time: k.time as Time,
       open: k.open,
@@ -200,10 +207,8 @@ export function CandlestickChart({
       close: k.close,
     }))
 
-    // 设置 K 线数据
     candlestickSeriesRef.current.setData(candleData)
 
-    // 设置成交量数据
     if (volumeSeriesRef.current && showVolume) {
       const volumeData: HistogramData[] = klineData.map((k) => ({
         time: k.time as Time,
@@ -213,12 +218,10 @@ export function CandlestickChart({
       volumeSeriesRef.current.setData(volumeData)
     }
 
-    // 记录最后一根 K 线
     if (klineData.length > 0) {
       lastBarRef.current = klineData[klineData.length - 1]
     }
 
-    // 自适应显示
     chartRef.current?.timeScale().fitContent()
   }, [klineData, showVolume])
 
@@ -228,22 +231,23 @@ export function CandlestickChart({
       if (!candlestickSeriesRef.current) return
 
       const kline = data.k
+      const time = Math.floor(kline.t / 1000)
+
       const newBar: CandlestickData = {
-        time: Math.floor(kline.t / 1000) as Time,
+        time: time as Time,
         open: parseFloat(kline.o),
         high: parseFloat(kline.h),
         low: parseFloat(kline.l),
         close: parseFloat(kline.c),
       }
 
-      // 更新 K 线
       candlestickSeriesRef.current.update(newBar)
 
       // 更新成交量
       if (volumeSeriesRef.current && showVolume) {
         const volumeBar: HistogramData = {
-          time: Math.floor(kline.t / 1000) as Time,
-          value: parseFloat(kline.v),
+          time: time as Time,
+          value: parseFloat(kline.v) || 0,
           color:
             newBar.close >= newBar.open
               ? CHART_COLORS.volumeUpColor
@@ -252,9 +256,8 @@ export function CandlestickChart({
         volumeSeriesRef.current.update(volumeBar)
       }
 
-      // 更新最后一根 K 线引用
       lastBarRef.current = {
-        time: Math.floor(kline.t / 1000),
+        time,
         open: newBar.open,
         high: newBar.high,
         low: newBar.low,
@@ -265,8 +268,16 @@ export function CandlestickChart({
     [showVolume]
   )
 
+  // 根据市场类型选择正确的 hook
+  const useKlineHook =
+    market === 'futures-usdt'
+      ? useFuturesKlineStream
+      : market === 'futures-coin'
+        ? useCoinMKlineStream
+        : useKlineStream
+
   // 订阅 WebSocket K 线更新
-  useKlineStream(symbol, currentInterval, handleKlineUpdate, {
+  useKlineHook(symbol, currentInterval, handleKlineUpdate, {
     enabled: !!symbol && !!klineData,
   })
 
@@ -300,7 +311,12 @@ export function CandlestickChart({
       <div className="relative" style={{ height }}>
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
-            <div className="text-muted-foreground">Loading...</div>
+            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
+            <div className="text-destructive text-sm">加载失败，请重试</div>
           </div>
         )}
         <div ref={chartContainerRef} className="w-full h-full" />

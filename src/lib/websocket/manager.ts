@@ -11,6 +11,11 @@
 
 import { WS_ENDPOINTS } from '../api/types'
 
+/** 调试模式 */
+const DEBUG = true
+const log = (...args: unknown[]) => DEBUG && console.log('[WS]', ...args)
+const logError = (...args: unknown[]) => console.error('[WS]', ...args)
+
 /** 市场类型 */
 export type MarketType = 'spot' | 'futures-usdt' | 'futures-coin'
 
@@ -50,7 +55,7 @@ class WebSocketManager {
   private readonly HEARTBEAT_INTERVAL = 3 * 60 * 1000 - 10000 // 2分50秒
   private readonly MAX_STREAMS_PER_MESSAGE = 200
 
-  // 端点映射
+  // 端点映射（只使用官方确认的端点）
   private readonly ENDPOINTS: Record<MarketType, string> = {
     spot: WS_ENDPOINTS.SPOT_COMBINED,
     'futures-usdt': WS_ENDPOINTS.FUTURES_USDT_COMBINED,
@@ -88,6 +93,8 @@ class WebSocketManager {
     const conn = this.connections.get(market)!
     const newStreams: string[] = []
 
+    log(`subscribe called: market=${market}, streams=`, streams)
+
     // 注册处理函数
     streams.forEach((stream) => {
       const normalizedStream = stream.toLowerCase()
@@ -105,12 +112,18 @@ class WebSocketManager {
       }
     })
 
+    log(`current subscriptions for ${market}:`, Array.from(conn.subscriptions))
+    log(`current handlers for ${market}:`, Array.from(conn.handlers.keys()))
+
     // 如果有新流需要订阅
     if (newStreams.length > 0) {
+      log(`new streams to subscribe:`, newStreams)
       // 确保连接已建立
       if (!conn.ws || conn.ws.readyState !== WebSocket.OPEN) {
+        log(`ws not connected, connecting...`)
         this.connect(market)
       } else {
+        log(`ws already connected, sending subscribe`)
         this.sendSubscribe(market, newStreams)
       }
     }
@@ -122,6 +135,8 @@ class WebSocketManager {
   unsubscribe(market: MarketType, streams: string[], handler: MessageHandler): void {
     const conn = this.connections.get(market)!
     const streamsToUnsubscribe: string[] = []
+
+    log(`unsubscribe called: market=${market}, streams=`, streams)
 
     streams.forEach((stream) => {
       const normalizedStream = stream.toLowerCase()
@@ -140,14 +155,26 @@ class WebSocketManager {
       }
     })
 
+    log(`after unsubscribe, subscriptions for ${market}:`, Array.from(conn.subscriptions))
+
     // 发送取消订阅消息
     if (streamsToUnsubscribe.length > 0 && conn.ws?.readyState === WebSocket.OPEN) {
       this.sendUnsubscribe(market, streamsToUnsubscribe)
     }
 
-    // 如果没有任何订阅了，关闭连接
+    // 如果没有任何订阅了，延迟关闭连接（避免 React StrictMode 导致的问题）
     if (conn.subscriptions.size === 0 && conn.ws) {
-      this.disconnect(market)
+      log(`${market} no subscriptions left, will close connection in 2s`)
+      setTimeout(() => {
+        // 再次检查是否仍然没有订阅
+        const currentConn = this.connections.get(market)!
+        if (currentConn.subscriptions.size === 0 && currentConn.ws) {
+          log(`${market} still no subscriptions, closing connection`)
+          this.disconnect(market)
+        } else {
+          log(`${market} has new subscriptions, keeping connection`)
+        }
+      }, 2000)
     }
   }
 
@@ -162,19 +189,33 @@ class WebSocketManager {
       return
     }
 
+    // 清理旧连接
+    if (conn.ws) {
+      try {
+        conn.ws.close()
+      } catch (e) {
+        // 忽略关闭错误
+      }
+      conn.ws = null
+    }
+
     this.updateState(market, 'connecting')
 
     const endpoint = this.ENDPOINTS[market]
+    console.log(`[WS] ${market} connecting to ${endpoint}`)
     const ws = new WebSocket(endpoint)
 
     ws.onopen = () => {
-      console.log(`[WS] ${market} connected`)
+      log(`${market} connected to ${endpoint}`)
       conn.reconnectAttempts = 0
       this.updateState(market, 'connected')
 
       // 订阅所有流
       if (conn.subscriptions.size > 0) {
+        log(`${market} sending subscriptions:`, Array.from(conn.subscriptions))
         this.sendSubscribe(market, Array.from(conn.subscriptions))
+      } else {
+        log(`${market} no subscriptions to send`)
       }
 
       // 启动心跳
@@ -186,12 +227,13 @@ class WebSocketManager {
     }
 
     ws.onclose = (event) => {
-      console.log(`[WS] ${market} closed: ${event.code}`)
+      log(`${market} closed: code=${event.code}, reason=${event.reason || 'none'}`)
       this.handleDisconnect(market)
     }
 
     ws.onerror = (error) => {
-      console.error(`[WS] ${market} error:`, error)
+      logError(`${market} error:`, error)
+      // onerror 后会触发 onclose，在 onclose 中处理重连
     }
 
     conn.ws = ws
@@ -235,7 +277,10 @@ class WebSocketManager {
    */
   private sendSubscribe(market: MarketType, streams: string[]): void {
     const conn = this.connections.get(market)!
-    if (!conn.ws || conn.ws.readyState !== WebSocket.OPEN) return
+    if (!conn.ws || conn.ws.readyState !== WebSocket.OPEN) {
+      log(`${market} cannot send subscribe, ws not open`)
+      return
+    }
 
     // 分批发送（每批最多 200 个流）
     for (let i = 0; i < streams.length; i += this.MAX_STREAMS_PER_MESSAGE) {
@@ -245,6 +290,7 @@ class WebSocketManager {
         params: batch,
         id: Date.now() + i,
       }
+      log(`${market} sending subscribe message:`, message)
       conn.ws.send(JSON.stringify(message))
     }
   }
@@ -273,26 +319,106 @@ class WebSocketManager {
     try {
       const data = JSON.parse(rawData)
 
+      // 订阅确认消息
+      if (data.result === null && data.id) {
+        log(`${market} subscription confirmed, id: ${data.id}`)
+        return
+      }
+
+      // 错误消息
+      if (data.error) {
+        logError(`${market} error response:`, data.error)
+        return
+      }
+
       // Combined stream 格式: { stream: "btcusdt@ticker", data: {...} }
-      if (data.stream && data.data) {
-        const handlers = conn.handlers.get(data.stream)
-        if (handlers) {
+      if (data.stream && data.data !== undefined) {
+        const streamName = data.stream.toLowerCase()
+        log(`${market} received stream: ${streamName}, handlers:`, Array.from(conn.handlers.keys()))
+
+        const handlers = conn.handlers.get(streamName)
+
+        if (handlers && handlers.size > 0) {
+          log(`${market} found ${handlers.size} handlers for ${streamName}`)
           handlers.forEach((handler) => {
             try {
               handler(data.data)
             } catch (error) {
-              console.error(`[WS] Handler error for ${data.stream}:`, error)
+              logError(`Handler error for ${streamName}:`, error)
             }
           })
+        } else {
+          log(`${market} no direct handler for ${streamName}, trying pattern match`)
+          // 尝试匹配通配符流（如 !ticker@arr）
+          let matched = false
+          conn.handlers.forEach((handlerSet, registeredStream) => {
+            if (streamName === registeredStream ||
+                streamName.includes(registeredStream) ||
+                registeredStream.includes(streamName)) {
+              log(`${market} pattern matched: ${registeredStream}`)
+              matched = true
+              handlerSet.forEach((handler) => {
+                try {
+                  handler(data.data)
+                } catch (error) {
+                  logError(`Handler error for ${registeredStream}:`, error)
+                }
+              })
+            }
+          })
+          if (!matched) {
+            log(`${market} no handler matched for stream: ${streamName}`)
+          }
         }
+        return
       }
 
-      // 订阅确认消息
-      if (data.result === null && data.id) {
-        // 订阅成功
+      // 单流格式（直接是数据对象，带 e 字段表示事件类型）
+      if (data.e) {
+        const eventType = data.e
+        log(`${market} received event: ${eventType}, symbol: ${data.s || 'N/A'}`)
+
+        // 根据事件类型分发
+        let streamPattern = ''
+
+        if (eventType === '24hrTicker') {
+          streamPattern = data.s ? `${data.s.toLowerCase()}@ticker` : '!ticker@arr'
+        } else if (eventType === 'kline') {
+          streamPattern = data.s ? `${data.s.toLowerCase()}@kline_${data.k?.i}` : ''
+        } else if (eventType === 'depthUpdate') {
+          streamPattern = data.s ? `${data.s.toLowerCase()}@depth` : ''
+        } else if (eventType === 'trade' || eventType === 'aggTrade') {
+          streamPattern = data.s ? `${data.s.toLowerCase()}@trade` : ''
+        } else if (eventType === 'markPriceUpdate') {
+          streamPattern = data.s ? `${data.s.toLowerCase()}@markprice` : '!markprice@arr@1s'
+        }
+
+        log(`${market} stream pattern: ${streamPattern}`)
+
+        // 分发到所有匹配的处理器
+        let matched = false
+        conn.handlers.forEach((handlerSet, registeredStream) => {
+          const normalizedRegistered = registeredStream.toLowerCase()
+          if (normalizedRegistered === streamPattern ||
+              normalizedRegistered.includes('!ticker@arr') ||
+              normalizedRegistered.includes('!markprice@arr')) {
+            log(`${market} event matched handler: ${registeredStream}`)
+            matched = true
+            handlerSet.forEach((handler) => {
+              try {
+                handler(data)
+              } catch (error) {
+                logError(`Handler error:`, error)
+              }
+            })
+          }
+        })
+        if (!matched) {
+          log(`${market} no handler matched for event: ${eventType}`)
+        }
       }
     } catch (error) {
-      console.error(`[WS] Message parse error:`, error)
+      logError(`Message parse error:`, error, rawData.substring(0, 200))
     }
   }
 

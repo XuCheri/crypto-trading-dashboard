@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from 'react'
 import {
   useFuturesTickerStream,
   useCoinMTickerStream,
-  useMarkPriceStream,
+  useSingleMarkPriceStream,
   TickerStreamData,
   MarkPriceStreamData,
 } from '@/hooks/useBinanceStream'
@@ -91,8 +91,8 @@ export function FuturesTickerPrice({
     enabled: !!symbol,
   })
 
-  // 订阅标记价格
-  const { isConnected: markPriceConnected } = useMarkPriceStream(
+  // 订阅标记价格（单个交易对）
+  const { isConnected: markPriceConnected } = useSingleMarkPriceStream(
     symbol,
     handleMarkPriceMessage,
     {

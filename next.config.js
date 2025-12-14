@@ -1,9 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // 静态导出配置，用于部署到 Vercel/Netlify/GitHub Pages
-  output: 'export',
+  // 注意：已移除 output: 'export' 以启用 API Routes 代理功能
+  // 部署到 Vercel 时，API Routes 会自动作为 Serverless Functions 运行
 
-  // 图片优化配置（静态导出时需要 unoptimized）
+  // 图片优化配置
   images: {
     unoptimized: true,
   },
